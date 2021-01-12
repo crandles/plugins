@@ -208,6 +208,63 @@ var _ = Describe("vlan Operations", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	It("creates an vlan link in a non-default namespace with a parent from the same namespace", func() {
+		conf := &NetConf{
+			NetConf: types.NetConf{
+				CNIVersion: "0.3.0",
+				Name:       "testConfig",
+				Type:       "vlan",
+			},
+			Master:      MASTER_NAME,
+			VlanId:      33,
+			InContainer: true,
+		}
+
+		// Create vlan in other namespace
+		targetNs, err := testutils.NewNS()
+		Expect(err).NotTo(HaveOccurred())
+		defer targetNs.Close()
+
+		err = originalNS.Do(func(ns.NetNS) error {
+			defer GinkgoRecover()
+
+			// Add master
+			err = netlink.LinkAdd(&netlink.Dummy{
+				LinkAttrs: netlink.LinkAttrs{
+					Name: MASTER_NAME,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			m, err := netlink.LinkByName(MASTER_NAME)
+			Expect(err).NotTo(HaveOccurred())
+			err = netlink.LinkSetUp(m)
+			Expect(err).NotTo(HaveOccurred())
+			err = netlink.LinkSetMTU(m, 1200)
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = createVlan(conf, "foobar0", targetNs)
+			Expect(err).NotTo(HaveOccurred())
+			return nil
+		})
+
+		Expect(err).NotTo(HaveOccurred())
+
+		// Make sure vlan link exists in the target namespace
+		err = targetNs.Do(func(ns.NetNS) error {
+			defer GinkgoRecover()
+
+			link, err := netlink.LinkByName("foobar0")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(link.Attrs().Name).To(Equal("foobar0"))
+			Expect(link.Attrs().MTU).To(Equal(1200))
+			m, err := netlink.LinkByName(MASTER_NAME)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(link.Attrs().ParentIndex).To(Equal(m.Attrs().Index))
+			return nil
+		})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	It("configures and deconfigures an vlan link with ADD/DEL", func() {
 		const IFNAME = "eth0"
 
