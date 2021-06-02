@@ -73,7 +73,7 @@ func loadConf(netNS string, bytes []byte) (*NetConf, string, error) {
 		masterMTU, err = getMTUByName(n.Master)
 	}
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("could not retrieve master mtu: %w", err)
 	}
 	if n.MTU < 0 || n.MTU > masterMTU {
 		return nil, "", fmt.Errorf("invalid MTU %d, must be [0, master MTU(%d)]", n.MTU, masterMTU)
